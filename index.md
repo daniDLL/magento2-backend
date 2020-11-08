@@ -4,7 +4,7 @@
 ## Table of Contents
 1. [Historia de Magento](/magento2-backend#historia-de-magento)
 1. [Docker](/magento2-backend#docker)
-1. [Instalación de Magento](/magento2-backend#installation)
+1. [Instalación de Magento](/magento2-backend#instalación-de-magento)
 1. [Design Patterns](/magento2-backend#design-patterns)
 1. [Modular Structure](/magento2-backend#modular-structure)
 1. [Routing](/magento2-backend#routing)
