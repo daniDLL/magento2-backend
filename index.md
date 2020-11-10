@@ -9,12 +9,17 @@
 1. [Estructura de Ficheros](/magento2-backend#estructura-de-ficheros)
 1. [Patrones de diseño](/magento2-backend#design-patterns)
 1. [Routing](/magento2-backend#routing)
-1. [Service Contracts](/magento2-backend#service-contracts)
 1. [CLI commands](/magento2-backend#cli-commands)
+1. [Module Example](/magento2-backend#module-example)
+1. [Service Contracts](/magento2-backend#service-contracts)
 1. [Management Entities](/magento2-backend#management-entities)
-1. [Observers](/magento2-backend#observers)
+1. [WebAPI](/magento2-backend#webapi)
 1. [Plugins](/magento2-backend#plugins)
+1. [Observers](/magento2-backend#observers)
 1. [Proxies](/magento2-backend#proxies)
+1. [Cron](/magento2-backend#cron)
+1. [Logger](/magento2-backend#logger)
+1. [System Config](/magento2-backend#system-config)
 
 ## Historia de Magento
 
@@ -236,6 +241,37 @@ Ejemplo:
 > http://curso.magento.local/catalog/product/view/id/1562
 
 Por último el `Default Router` sirve para recoger todas aquellas peticiones que no han `matcheado` con nada y le sirve a Magento para redirigir a la página 404 indicando al usuario que esa URL no significa nada actualmente.
+
+## CLI commands
+
+![Cli Commands](./images/cli.png "Cli Commands")
+
+## Module Example
+
+```
+$ git checkout 2/module-creation
+```
+
+![DDL](./images/ddl.png "DDL")
+
+## Service Contracts
+
+Primero tenemos que entender la relación entre los modelos, resource models, collections y repositories, se trata de un ORM (Object Relational Mapping), que nos sirve para abstraernos de la base de datos lo más posible:
+
+* Models: son la representación de la entidades.
+* Resource Models: son los “mapeadores” de datos para la estructura de almacenamiento. El componente que se encarga de escribir y leer los datos.
+* Collections: son el encapsulado de datos y conjuntos de funcionalidades relacionadas.
+
+![Service Contracts](./images/service-contract.png "Service Contracts")
+
+
+
+
+
+
+
+
+
 
 > All rights reserved to [Magento2 DevDoc](https://devdocs.magento.com/#/individual-contributors)
 
