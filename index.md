@@ -11,6 +11,11 @@
 1. [Routing](/magento2-backend#routing)
 1. [CLI commands](/magento2-backend#cli-commands)
 1. [Module Example](/magento2-backend#module-example)
+1. [Dependency Injection](/magento2-backend#dependency-injection)
+1. [Object Manager](/magento2-backend#object-manager)
+1. [Factories](/magento2-backend#factories)
+1. [Declarative Schema](/magento2-backend#declarative-schema)
+1. [Data Patches](/magento2-backend#data-patches)
 1. [Service Contracts](/magento2-backend#service-contracts)
 1. [Management Entities](/magento2-backend#management-entities)
 1. [WebAPI](/magento2-backend#webapi)
@@ -254,6 +259,49 @@ $ git checkout 2/module-creation
 
 ![DDL](./images/ddl.png "DDL")
 
+## Dependency Injection
+
+La inyección de dependencias es un patrón de diseño que permite declarar que un objeta A depende de otro objeto externo B. Normalmente las dependencias que se declaran son interfaces y la instancia del objeto B implementa esa o esas interfaces.
+
+Esto permite desacoplar qué dependencias recibe cada objeto y por lo tanto ya no necesita preocuparse por inicializar sus propias dependencias. En función de qué configuración haya en la aplicación se decidirá qué clase implementa las interfaces definidas.
+
+En resumen, definimos lo qué hacen las clases que queremos tener como dependencia pero no la implementación concreta, de esa manera podemos "intercambiar" esas dependencias desacopladamente sin tener que modificar la clase destino.
+
+Este mapeo o configuración de las inyecciones de dependencias se realiza en los ficheros `di.xml`.
+
+Magento usa su herramienta de compilación de código para recolectar todas las dependencias de las clases y almacenarlas en sus ficheros. Durante el proceso de instanciación de una clase el `Object Manager` usa la información de esos ficheros para crear objectos concretos en la aplicación.
+
+Las clases de servicio `Service Classes` que no existían realmente en el código (virtual), como los `proxies`, `factories` y `interceptors` que se declaran en los `di.xml`, se generan con la ayuda de este compilador de Magento y se almacenan en el directorio `<magento_root>/generated`.
+
+### Virtual types
+
+Un `virtual type` te permite cambiar los argumentos de una dependencia especifica y cambiar el comportamiento de una clase en particular. Esto permite crear clases custom en base a otras ya existentes sin necesidad de crearlas "físicamente" para cambiar cierto comportamiento.
+
+Ejemplo:
+
+```xml
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:ObjectManager/etc/config.xsd">
+    <virtualType name="Hiberus\Custom\Model\Config" type="Magento\Core\Model\Config">
+        <arguments>
+            <argument name="type" xsi:type="string">system</argument>
+        </arguments>
+    </virtualType>
+    <type name="Magento\Core\Model\App">
+        <arguments>
+            <argument name="config" xsi:type="object">Hiberus\Custom\Model\Config</argument>
+        </arguments>
+    </type>
+</config>
+```
+
+## Object Manager
+
+## Factories
+
+## Declarative Schema
+
+## Data Patches
+
 ## Service Contracts
 
 Primero tenemos que entender la relación entre los modelos, resource models, collections y repositories, se trata de un ORM (Object Relational Mapping), que nos sirve para abstraernos de la base de datos lo más posible:
@@ -264,14 +312,21 @@ Primero tenemos que entender la relación entre los modelos, resource models, co
 
 ![Service Contracts](./images/service-contract.png "Service Contracts")
 
+## Management Entities
 
+## WebAPI
 
+## Plugins
 
+## Observers
 
+## Proxies
 
+## Cron
 
+## Logger
 
-
+## System Config
 
 > All rights reserved to [Magento2 DevDoc](https://devdocs.magento.com/#/individual-contributors)
 
