@@ -296,11 +296,119 @@ Ejemplo:
 
 ## Object Manager
 
+Es una clase que nos permite crear cualquier objecto de la aplicación.
+
+> Las buenas prácticas de magento no permiten usar directamente el `ObjectManager` para instanciar clase porque oculta las dependencias reales de una clase.
+
+Responsabilidades:
+
+* Creación de objetos en `factories` y `proxies`.
+* Implementa el patrón `singleton` ya que permite devolver instancia compartidas de objectos (si se quiere), tambien se le puede solicitar que te devuelva una recien creada.
+* Gestión de dependencias creando las clases concretas de las interfaces que define una clase en su constructor.
+* Automáticamente instancia los parámetros de los constructores de clase.
+
 ## Factories
+
+Los `Factories` son clases que instancian objectos no-inyectables, por ejemplo, los modelos que reprensentan una entidad concreta.
+
+Un ejemplo es la clase `Magento\Catalog\Model\Product`. Esa clase reprensenta un producto en base de datos con sus atributos, no podemos inyectar esa clase en el constructor sino que tenemos que inyectarnos su `Factory` correspondiente que nos genere instancias `Magento\Catalog\Model\ProductFactory`.
+
+Los `Factories` son generados por el `ObjectManager` y se guardan en el directorio `generated`. Internamente están compuesto por el object manager que se encarga de hacer un create de la clase que queremos generar.
+
+En el ejemplo que estamos viendo el resultado es este:
+
+```php
+<?php
+namespace Magento\Catalog\Model;
+
+/**
+ * Factory class for @see \Magento\Catalog\Model\Product
+ */
+class ProductFactory
+{
+    /**
+     * Object Manager instance
+     *
+     * @var \Magento\Framework\ObjectManagerInterface
+     */
+    protected $_objectManager = null;
+
+    /**
+     * Instance name to create
+     *
+     * @var string
+     */
+    protected $_instanceName = null;
+
+    /**
+     * Factory constructor
+     *
+     * @param \Magento\Framework\ObjectManagerInterface $objectManager
+     * @param string $instanceName
+     */
+    public function __construct(\Magento\Framework\ObjectManagerInterface $objectManager, $instanceName = '\\Magento\\Catalog\\Model\\Product')
+    {
+        $this->_objectManager = $objectManager;
+        $this->_instanceName = $instanceName;
+    }
+
+    /**
+     * Create class instance with specified parameters
+     *
+     * @param array $data
+     * @return \Magento\Catalog\Model\Product
+     */
+    public function create(array $data = [])
+    {
+        return $this->_objectManager->create($this->_instanceName, $data);
+    }
+}
+```
+
+Por defecto no es necesario tener que crear los `Factories` pero si se quiere que hagan un comportamiento especial adicional se pueden crear manualmente y utilizando el object manager realizar el mismo procedimiento que los autogenerados.
+
+### Cómo usar los `Factories`
+
+Se puede obtener el singleton de un factory usando la inyección de dependencias.
+
+El siguiente ejemplo muestra como conseguir el Factory de la clase Block:
+
+```php
+function __construct(\Magento\Cms\Model\BlockFactory $blockFactory) {
+    $this->blockFactory = $blockFactory;
+}
+```
+
+Llamando a la función `create()` nos devuelve una instancia nueva de la clase Block:
+
+```php
+$block = $this->blockFactory->create();
+```
+
+Para clases cuyo constructor necesita parámetros, se los podemos pasar al Factory como un array y el object manager lo usará para pasárselo al construct de la clase origen:
+
+```php
+$resultItem = $this->itemFactory->create([
+  'title' => $item->getQueryText(),
+  'num_results' => $item->getNumResults(),
+]);
+```
 
 ## Declarative Schema
 
+`Declarative Schema` tiene como objetivo simplificar los procesos de instalación y actualización de Magento. Anteriormente los desarrolladores tenían que crear `scripts` de base de datos en PHP.
+
+Este nuevo sistema permite declarar el estado final deseado de la base de datos y el propio sistema se reajusta en base a los cambios que hacemos en el declarative schema.
+
+Tan solo escribiendo y modificando XMLs nos permite crear, actualizar, borrar tablas de base de datos sin mucho trabajo.
+
+[Informacion detallada sobre `Declarative Schema`](https://devdocs.magento.com/guides/v2.4/extension-dev-guide/declarative-schema/db-schema.html)
+
 ## Data Patches
+
+Un `Data Patch` es una clase que contiene intrucciones de modificación de datos. Por ejemplo añadir atributos de producto nuevos, incluir o modificar configuraciones de Magento, etc. Todo lo que implica añadir o modificar información en la base de datos debe ir en un data patch.
+
+Los data patch solo se ejecutan una vez cuando se actualiza la aplicación. También se pueden encadenar distintos data patches que tiene dependencia unos con otros, mediante la función `getDependencies()` se especifican los data patches que tienen que ejecutarse antes que el actual.
 
 ## Service Contracts
 
@@ -317,6 +425,34 @@ Primero tenemos que entender la relación entre los modelos, resource models, co
 ## WebAPI
 
 ## Plugins
+
+Los `Plugins` son clases que permiten modificar el comportamiento de las funciones públicas de las clases interceptando la llamada a la función y ejecutado código antes, después o alrrededor (sustituyendo la original). Esto nos permite sustituir o extender el comportamiento original de los métodos públicos de cualquier clase o interfaz.
+
+Esta intercepción de los métodos originales reduce el conflicto entre extensiones que modifican el comportamiento de la misma clase o método. Magento llama a estos interceptores secuencialmente siguiente un orden configurado.
+
+`Los plugins no pueden usarse en los siguientes casos`:
+
+* `Final` methods
+* `Final` classes
+* `Non-public` methods.
+* Static methods
+* `__construct()`
+* Virtual types
+* Objectos que son instanciados antes de la clase "interceptadora" del core: `Magento\Framework\Interception`
+
+### Cómo declarar un Plugin
+
+Se declaran en los ficheros `di.xml`:
+
+```xml
+<config>
+    <type name="{ObservedType}">
+      <plugin name="{pluginName}" type="{PluginClassName}" sortOrder="1" disabled="false" />
+    </type>
+</config>
+```
+
+
 
 ## Observers
 
