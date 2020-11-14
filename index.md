@@ -452,13 +452,347 @@ Se declaran en los ficheros `di.xml`:
 </config>
 ```
 
+Se deben especificar esto elementos:
 
+* `type name` - La clase o interfaz que el plugin observa.
+* `plugin name` - El nombre que identifica al plugin. Debe ser único para diferenciarse, ya que magento junta todos los xmls en uno y por tanto es necesario diferenciarlos ya que sino se unificarán en uno solo.
+* `plugin type` - La clase que implementa nuestro plugin.
+* (Opcional) `sortOrder` - Los plugins que llaman al mismo método se ejecutan siguiendo ese orden, de menor a mayor sort order.
+* (Opcional) `disabled` - Nos permite poder desabilitar un plugin. Por defecto es "false" y no hace falta especificarlo.
+
+Para los 3 tipos de plugin siempre se manda como primer parámetro de la función "interceptora" una instancia del objeto "interceptado" que nos da acceso a todas las funciones públicas del mismo.
+
+Otro punto importante, es el nombrado de las funciones en los plugins. Por convención se capitaliza siempre la función "intercetada" y se le añade al principio el tipo de plugin que le aplica, por ejemplo:
+
+```php
+public function setName($name)
+{
+    ...
+}
+```
+
+Esta función en la clase del plugin podrá tener los siguientes nombres:
+* beforeSetName
+* aroundSetName
+* afterSetName
+
+
+### Before methods
+
+Estos plugins se ejecutan antes de llamar a la función principal y por lo tanto el objetivo principal de los plugins de tipo `before` es modificar o cambiar los argumentos de una función, que se devuelven como resultado del plugin. Si la función "interceptada" tiene más de un parámentro se devolverá un array de argumentos. En caso de que no queramos modificar los argumentos, sino que simplemente queriamos engancharnos aquí por cualquier otro motivo se devolverá como resultado `null`.
+
+Un ejemplo que modifica un parámetro de entrada a una función:
+
+```php
+<?php
+namespace My\Module\Plugin;
+
+class ProductAttributesUpdater
+{
+    public function beforeSetName(\Magento\Catalog\Model\Product $subject, $name)
+    {
+        return ['(' . $name . ')'];
+    }
+}
+```
+
+### After methods
+
+Los plugins de tipo `after` son por el contrario ejecutados cuando la función "interceptada" ya ha finalizado y por lo tanto el objetivo de estos es modificar o cambios el resultado devuelvo por dicha función.
+
+Aquí podemos ver un ejemplo que altera el resultado devuelto:
+
+```php
+<?php
+namespace My\Module\Plugin;
+
+class ProductAttributesUpdater
+{
+    public function afterGetName(\Magento\Catalog\Model\Product $subject, $result)
+    {
+        return '|' . $result . '|';
+    }
+}
+```
+
+### Around methods
+
+Este tipo de plugins lo que nos permite es "englobar" la función original, de esta manera podemos sobreescribir su comportamiento totalmente por uno nuestro, o complementarlo.
+
+Veamos un ejemplo:
+
+```php
+<?php
+namespace My\Module\Plugin;
+
+class ProductAttributesUpdater
+{
+    public function aroundSave(\Magento\Catalog\Model\Product $subject, callable $proceed)
+    {
+        $someValue = $this->doSmthBeforeProductIsSaved();
+        $returnValue = null;
+
+        if ($this->canCallProceedCallable($someValue)) {
+            $returnValue = $proceed();
+        }
+
+        if ($returnValue) {
+            $this->postProductToFacebook();
+        }
+
+        return $returnValue;
+    }
+}
+```
+
+Terminamos de entender los plugins revisando la función que implenta y gestiona los interceptores o plugins, `una auténtica obra de arte`:
+
+```php
+/**
+    * Calls plugins for a given method.
+    *
+    * @param string $method
+    * @param array $arguments
+    * @param array $pluginInfo
+    * @return mixed|null
+    */
+protected function ___callPlugins($method, array $arguments, array $pluginInfo)
+{
+    $subject = $this;
+    $type = $this->subjectType;
+    $pluginList = $this->pluginList;
+
+    $next = function (...$arguments) use (
+        $method,
+        &$pluginInfo,
+        $subject,
+        $type,
+        $pluginList,
+        &$next
+    ) {
+        $capMethod = ucfirst($method);
+        $currentPluginInfo = $pluginInfo;
+        $result = null;
+
+        if (isset($currentPluginInfo[DefinitionInterface::LISTENER_BEFORE])) {
+            // Call 'before' listeners
+            foreach ($currentPluginInfo[DefinitionInterface::LISTENER_BEFORE] as $code) {
+                $pluginInstance = $pluginList->getPlugin($type, $code);
+                $pluginMethod = 'before' . $capMethod;
+                $beforeResult = $pluginInstance->$pluginMethod($this, ...array_values($arguments));
+
+                if ($beforeResult !== null) {
+                    $arguments = (array)$beforeResult;
+                }
+            }
+        }
+
+        if (isset($currentPluginInfo[DefinitionInterface::LISTENER_AROUND])) {
+            // Call 'around' listener
+            $code = $currentPluginInfo[DefinitionInterface::LISTENER_AROUND];
+            $pluginInfo = $pluginList->getNext($type, $method, $code);
+            $pluginInstance = $pluginList->getPlugin($type, $code);
+            $pluginMethod = 'around' . $capMethod;
+            $result = $pluginInstance->$pluginMethod($subject, $next, ...array_values($arguments));
+        } else {
+            // Call original method
+            $result = $subject->___callParent($method, $arguments);
+        }
+
+        if (isset($currentPluginInfo[DefinitionInterface::LISTENER_AFTER])) {
+            // Call 'after' listeners
+            foreach ($currentPluginInfo[DefinitionInterface::LISTENER_AFTER] as $code) {
+                $pluginInstance = $pluginList->getPlugin($type, $code);
+                $pluginMethod = 'after' . $capMethod;
+                $result = $pluginInstance->$pluginMethod($subject, $result, ...array_values($arguments));
+            }
+        }
+
+        return $result;
+    };
+
+    $result = $next(...array_values($arguments));
+    $next = null;
+
+    return $result;
+}
+```
+
+Veamos un ejemplo de orden de ejecución de los plugins:
+
+```xml
+<config>
+    <type name="Magento\Framework\App\Action\Action">
+        <plugin name="vendor_module_plugina" type="Vendor\Module\Plugin\PluginA" sortOrder="10" />
+        <plugin name="vendor_module_pluginb" type="Vendor\Module\Plugin\PluginB" sortOrder="20" />
+        <plugin name="vendor_module_pluginc" type="Vendor\Module\Plugin\PluginC" sortOrder="30" />
+    </type>
+</config>
+```
+#### Escenario 1
+
+||PLUGINA|PLUGINB|PLUGINC|
+|---|---|---|---|
+|sortOrder|10|20|30|
+|before|beforeDispatch()|beforeDispatch()|beforeDispatch()|
+|around|   |   |   |
+|after|afterDispatch()|afterDispatch()|afterDispatch()|
+
+La ejecución será en este orden:
+* PluginA::beforeDispatch()
+* PluginB::beforeDispatch()
+* PluginC::beforeDispatch()
+  * Action::dispatch()
+* PluginA::afterDispatch()
+* PluginB::afterDispatch()
+* PluginC::afterDispatch()
+
+#### Escenario 2
+
+||PLUGINA|PLUGINB|PLUGINC|
+|---|---|---|---|
+|sortOrder|10|20|30|
+|before|beforeDispatch()|beforeDispatch()|beforeDispatch()|
+|around|   |	aroundDispatch()|   |
+|after|afterDispatch()|afterDispatch()|afterDispatch()|
+
+`PluginB::aroundDispatch()`:
+
+```php
+class PluginB
+{
+    public function aroundDispatch(\Magento\Framework\App\Action\Action $subject, callable $next, ...$args)
+    {
+        // The first half of code goes here
+        // ...
+
+        $result = $next(...$args);
+
+        // The second half of code goes here
+        // ...
+
+        return $result;
+    }
+}
+```
+
+La ejecución será en este orden:
+* PluginA::beforeDispatch()
+* PluginB::beforeDispatch()
+* PluginB::aroundDispatch()
+  * PluginC::beforeDispatch()
+    * Action::dispatch()
+  * PluginC::afterDispatch()
+* PluginB::aroundDispatch()
+* PluginA::afterDispatch()
+* PluginB::afterDispatch()
 
 ## Observers
 
+Este concepto está basado en el patrón de diseño Publicar-Suscribir. Hay un conjunto de componentes que publicar y otros que escuchan esperando recibir esas publicaciones.
+
+En este caso tenemos `Eventos` que serán las publicaciones y los `Observers` que serán los que escuchan a esos eventos y ejecutan su tarea especifica.
+
+En magento puedes publicar o lanzar un evento en el punto en que uno quiera y además puedes publicar toda la información que quieras pasarle al Evento.
+Para esa gestión de los Eventos se hace uso de la interfaz `Magento\Framework\Event\ManagerInterface`.
+
+Un ejemplo de generación de eventos:
+
+```php
+namespace MyCompany\MyModule;
+
+use Magento\Framework\Event\ManagerInterface as EventManager;
+
+class MyClass
+{
+  /**
+   * @var EventManager
+   */
+  private $eventManager;
+
+  /*
+   * @param \Magento\Framework\Event\ManagerInterface as EventManager
+   */
+  public function __construct(EventManager $eventManager)
+  {
+    $this->eventManager = $eventManager;
+  }
+
+  public function something()
+  {
+    $eventData = null;
+    // Code...
+    $this->eventManager->dispatch('my_module_event_before');
+    // More code that sets $eventData...
+    $this->eventManager->dispatch('my_module_event_after', ['myEventData' => $eventData]);
+  }
+}
+```
+
+Una vez que tenemos nuestros eventos codificados para lanzarse, podemos dejarlos así para que alguien más adelante pueda recibirlos desde el mismo módulo o desde cualquier otro.
+
+Para poder recibirlo necesitaremos tener un componente `Observer`. Para ello basta con crear una clase que implemente la interfaz `Magento\Framework\Event\ObserverInterface` y por otro lado definir la relación evento-observer en el fichero `events.xml`.
+
+Un `Observer` de ejemplo:
+
+```php
+namespace MyCompany\MyModule\Observer;
+
+use Magento\Framework\Event\ObserverInterface;
+
+class AnotherObserver implements ObserverInterface
+{
+  public function __construct()
+  {
+    // Observer initialization code...
+    // You can use dependency injection to get any class this observer may need.
+  }
+
+  public function execute(\Magento\Framework\Event\Observer $observer)
+  {
+    $myEventData = $observer->getData('myEventData');
+    // Additional observer execution code...
+  }
+}
+```
+
+Y su correspondiente `events.xml`:
+
+```xml
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Event/etc/events.xsd">
+    <event name="my_module_event_before">
+        <observer name="myObserverName" instance="MyCompany\MyModule\Observer\MyObserver" />
+    </event>
+    <event name="my_module_event_after">
+        <observer name="myObserverName" instance="MyCompany\MyModule\Observer\AnotherObserver" />
+    </event>
+</config>
+```
+
+Para deshabilitar un observer, se puede hacer igual que los plugins, mediante el atributo `disabled`:
+
+```xml
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Event/etc/events.xsd">
+    <event name="my_module_event_before">
+        <observer name="myObserverName" disabled="true" />
+    </event>
+</config>
+```
+
 ## Proxies
 
+Los `proxies` surgen de la necesidad de poder marcar determinadas dependencias y que solo se instancien cuando de verdad se utilizan, porque como ya sabemos por defecto el object manager al crear la instancia de un objeto también instancia los objetos de las dependencias definidas en el constructor.
+
+Pero si una de esas dependencias tiene un trabajo particular en su constructor que sea muy costoso en tiempo o en recursos puede afectarnos en nuestra clase y provocar que también sea lenta, ya que tendríamos que esperar a que terminara de instanciarse la dependencia.
+
+Con la ayuda de los proxies podemos solventar ese problema, e indicándole al object manager sobre que clases tiene que `postponer` esa instanciacion.
+
+> Podemos ver un ejemplo de uso en el [Repositorio del Curso](https://github.com/daniDLL/magento2-course), accediendo a la rama `8/proxies`.
+
 ## Cron
+
 
 ## Logger
 
