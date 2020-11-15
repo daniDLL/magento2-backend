@@ -17,7 +17,6 @@
 1. [Declarative Schema](#declarative-schema)
 1. [Data Patches](#data-patches)
 1. [Service Contracts](#service-contracts)
-1. [Management Entities](#management-entities)
 1. [WebAPI](#webapi)
 1. [Plugins](#plugins)
 1. [Observers](#observers)
@@ -420,9 +419,22 @@ Primero tenemos que entender la relación entre los modelos, resource models, co
 
 ![Service Contracts](./images/service-contract.png "Service Contracts")
 
-## Management Entities
-
 ## WebAPI
+
+Para configurar nuevos `endpoints` a la API de magento basta con crear el fichero `etc/webapi.xml`:
+
+```xml
+<?xml version="1.0"?>
+<routes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Webapi:etc/webapi.xsd">
+    <route url="/V1/sample/students" method="GET">
+        <service class="Hiberus\Sample\Api\StudentRepositoryInterface" method="getList"/>
+        <resources>
+            <resource ref="anonymous" />
+        </resources>
+    </route>
+</routes>
+
+```
 
 ## Plugins
 
@@ -793,10 +805,136 @@ Con la ayuda de los proxies podemos solventar ese problema, e indicándole al ob
 
 ## Cron
 
+Magento permite la definición de tareas programadas en el tiempo para llevar a cabo procesos recurrentes, como pueden ser la regeneración de los indexers, borrados de caché nocturno, envío de emails asíncronos, etc.
+
+El `entrypoint` para los crones se encuentra en: `pub/cron.php`.
+
+En magento se pueden definir tanto tareas "cron" personalizadas como grupos de "crones".
+
+Por defecto Magento trae los siguientes `cron_group`:
+
+* default
+* index
+* consumers
+
+Tareas "cron" que estén en diferentes grupos de cron se pueden ejecutar en paralelo, por lo que es algo importante a tener en cuenta a la hora de definir uno nuevo, ya que quizá nos interese crear nuestro nuevo Cron bajo un nuevo Cron Group.
+
+Para definir un nuevo cron solo hay que crear un nuevo fichero de configuración en `etc/crontab.xml` dentro de nuestro módulo:
+
+```xml
+<config>
+    <group id="<group_name>">
+        <job name="<job_name>" instance="<classpath>" method="<method>">
+            <schedule><time></schedule>
+        </job>
+    </group>
+</config>
+```
+
+Para definir un nuevo `cron_group` solo hay que crear un nuevo fichero de configuración en `etc/cron_groups.xml` dentro de nuestro módulo:
+
+```xml
+<config>
+    <group id="<group_name>">
+        <schedule_generate_every>1</schedule_generate_every>
+        <schedule_ahead_for>4</schedule_ahead_for>
+        <schedule_lifetime>2</schedule_lifetime>
+        <history_cleanup_every>10</history_cleanup_every>
+        <history_success_lifetime>60</history_success_lifetime>
+        <history_failure_lifetime>600</history_failure_lifetime>
+        <use_separate_process>1</use_separate_process>
+    </group>
+</config>
+```
 
 ## Logger
 
+Magento utiliza [Monolog](https://github.com/Seldaek/monolog) para escribir sus logs. Usa monolog como una implementación de la interfaz `Psr\Log\LoggerInterface`, la cual deberemos añadir a las dependencias de nuestra clase para poder escribir en los logs por defecto de Magento (system.log, debug.log, exception.log, etc).
+
+Para escribir logs en un fichero personalizado realizaremos lo siguiente en nuestro fichero `di.xml`:
+
+```xml
+<!-- Logger -->
+<virtualType name="Hiberus\Sample\Logger\SampleDebug" type="Magento\Framework\Logger\Handler\Base">
+    <arguments>
+        <argument name="fileName" xsi:type="string">/var/log/hiberus_sample.log</argument>
+    </arguments>
+</virtualType>
+
+<virtualType name="Hiberus\Sample\Logger\Monolog" type="Magento\Framework\Logger\Monolog">
+    <arguments>
+        <argument name="handlers" xsi:type="array">
+            <item name="debug" xsi:type="object">Hiberus\Sample\Logger\SampleDebug</item>
+        </argument>
+    </arguments>
+</virtualType>
+
+<type name="Hiberus\Sample\Logger\SampleLogger">
+    <arguments>
+        <argument name="logger" xsi:type="object">Hiberus\Sample\Logger\Monolog</argument>
+    </arguments>
+</type>
+```
+
+Gracias a los `Virtual Types` podemos modificar la lógica de magento para añadir un custom log sin tener que crear ni una sola clase y tan solo incluyendo configuración le decimos a Magento donde queremos que escriba nuestros logs.
+
 ## System Config
+
+Podemos tener una gestión de la configuración de los módulos en la cual los clientes pueden interactuar y definir ellos cómo quieren configurar los desarrollos.
+
+Para ello se utilizan los ficheros `etc/adminhtml/system.xml` donde definimos los campos configurables:
+
+```xml
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Config:etc/system_file.xsd">
+    <system>
+        <tab id="hiberus_tab" translate="label" sortOrder="1">
+            <label>HIBERUS</label>
+        </tab>
+        <section id="hiberus_sample" translate="label" sortOrder="10" showInDefault="1" showInWebsite="1" showInStore="1">
+            <label>Sample Configuration</label>
+            <tab>hiberus_tab</tab>
+            <resource>Hiberus_Sample::config</resource>
+            <group id="general_config" translate="label" type="text" sortOrder="10" showInDefault="1">
+                <label>Config Label</label>
+                <hide_in_single_store_mode>1</hide_in_single_store_mode>
+                <field id="enable" translate="label" type="select" sortOrder="1" showInDefault="1" canRestore="1">
+                    <label>Enable</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+            </group>
+        </section>
+    </system>
+</config>
+```
+
+Para definir unos valores por defecto de estos campos "configurables" los podemos fijar en el fichero `etc/config`:
+
+```xml
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Store:etc/config.xsd">
+    <default>
+        <hiberus_sample>
+            <general_config>
+                <enable>1</enable>
+            </general_config>
+        </hiberus_sample>
+    </default>
+</config>
+
+```
+
+Por otro lado, magento nos permite definir un conjunto de menus donde enlazar los distintos desarrollos del admin de una manera más accesible, esto lo podemos conseguir definiendo los elementos del menú en el fichero `etc/adminhtml/menu.xml`:
+
+```xml
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Backend:etc/menu.xsd">
+    <menu>
+        <add id="Hiberus_Sample::sample" title="Hiberus" translate="title" module="Hiberus_Sample" sortOrder="999" resource="Hiberus_Sample::sample"/>
+        <add id="Hiberus_Sample::sample_config" title="Configuration" translate="title" module="Hiberus_Sample" sortOrder="10" parent="Hiberus_Sample::sample" action="admin/system_config/edit/section/hiberus_sample/" resource="Hiberus_Sample::config"/>
+    </menu>
+</config>
+```
 
 > All rights reserved to [Magento2 DevDoc](https://devdocs.magento.com/#/individual-contributors)
 
